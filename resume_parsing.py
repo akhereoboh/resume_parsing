@@ -1,125 +1,109 @@
-import streamlit as st
-import pandas as pd
-import fitz  # PyMuPDF
-import docx
+import re
+import pdfminer
+
+from pdfminer.high_level import extract_text
 import spacy
 from spacy.matcher import Matcher
-import re
+from fuzzywuzzy import fuzz, process
 
 
-# Improved error handling and user feedback
-def parse_resume(resume_text):
-    """Parses a resume and extracts key information.
+class ResumeParser:
+    def __init__(self, pdf_path):
+        self.pdf_path = pdf_path
+        self.text = self.extract_text_from_pdf()
 
-    Args:
-        resume_text (str): The text content of the resume.
+    def extract_text_from_pdf(self):
+        try:
+            return extract_text(self.pdf_path)
+        except Exception as e:
+            print(f"Error extracting text from PDF: {e}")
+            return ""
 
-    Returns:
-        dict: A dictionary containing the extracted information,
-              or None if parsing fails.
-    """
-    try:
-        nlp = spacy.load("en_core_web_sm")  # Load smaller model for performance
+    def extract_contact_number_from_resume(self, text):
+        contact_number = None
+        pattern = r"\b(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"
+        match = re.search(pattern, text)
+        if match:
+            contact_number = match.group()
+        return contact_number
 
-        # Define patterns for various sections
-        doc = nlp(resume_text)
+    def extract_email_from_resume(self, text):
+        email = None
+        pattern = r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"
+        match = re.search(pattern, text)
+        if match:
+            email = match.group()
+        return email
+
+    def extract_skills_from_resume(self, text, skills_list):
+        skills = []
+        for skill in skills_list:
+            ratio = process.extractOne(skill, text, scorer=fuzz.token_sort_ratio)
+            if ratio and ratio[1] >= 1:
+                skills.append(skill)
+        return skills
+
+    def extract_education_from_resume(self, text):
+        education = []
+        pattern = r"(?i)(?:Bsc|\bB\.\w+|\bM\.\w+|\bPh\.D\.\w+|\bBachelor(?:'s)?|\bComputer(?:'s)?|\bPh\.D)\s(?:\w+\s)*\w+"
+        matches = re.findall(pattern, text)
+        for match in matches:
+            education.append(match.strip())
+        return education
+
+    def extract_name(self, resume_text):
+        nlp = spacy.load('en_core_web_sm')
         matcher = Matcher(nlp.vocab)
-
-        # Patterns for name, contact, email, experience, and skills
-        name_patterns = [{"LOWER": "abdulsamod"}, {"LOWER": "azeez"}]
-        matcher.add("NAME", [name_patterns])
-
-        parsed_data = {"name": None, "contact": None, "email": None, "experience": None, "skills": None}
+        patterns = [
+            [{'POS': 'PROPN'}, {'POS': 'PROPN'}],
+            [{'POS': 'PROPN'}, {'POS': 'PROPN'}, {'POS': 'PROPN'}],
+            [{'POS': 'PROPN'}, {'POS': 'PROPN'}, {'POS': 'PROPN'}, {'POS': 'PROPN'}]
+        ]
+        for pattern in patterns:
+            matcher.add('NAME', patterns=[pattern])
+        doc = nlp(resume_text)
         matches = matcher(doc)
-
         for match_id, start, end in matches:
-            matched_span = doc[start:end]
-            match_id_str = nlp.vocab.strings[match_id]
-            if match_id_str == "NAME":
-                parsed_data["name"] = matched_span.text.strip()
-
-        # Extract phone numbers using regex
-        phone_numbers = re.findall(r'\(\+\d{1,3}\) \d{3} \d{3} \d{4}', resume_text)
-        if phone_numbers:
-            parsed_data["contact"] = phone_numbers[0]
-
-        # Extract emails using regex
-        emails = re.findall(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', resume_text)
-        if emails:
-            parsed_data["email"] = emails[0]
-
-        # Extract experience and skills sections manually
-        experience_match = re.search(
-            r'WORK EXPERIENCE(.*?)(EDUCATION|ADDITIONAL EXPERIENCE|PUBLICATIONS|CONFERENCES|LANGUAGES)', resume_text,
-            re.DOTALL | re.IGNORECASE)
-        skills_match = re.search(
-            r'TECHNICAL PROFICIENCIES(.*?)(WORK EXPERIENCE|EDUCATION|ADDITIONAL EXPERIENCE|PUBLICATIONS|CONFERENCES|LANGUAGES)',
-            resume_text, re.DOTALL | re.IGNORECASE)
-
-        if experience_match:
-            parsed_data["experience"] = experience_match.group(1).strip()
-        if skills_match:
-            parsed_data["skills"] = skills_match.group(1).strip()
-
-        return parsed_data
-
-    except Exception as e:
-        st.error(f"Error parsing resume: {e}")
+            span = doc[start:end]
+            return span.text
         return None
 
 
-def read_pdf(file):
-    """Extracts text from a PDF file."""
-    doc = fitz.open(stream=file.read(), filetype="pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text()
-    return text
+if __name__ == '__main__':
+    resume_paths = r"C:/Users/User/Desktop/newCV.pdf"
+    parser = ResumeParser(resume_paths)
+    print("Resume: ", resume_paths)
 
+    #Extract and print the name
+    extract_name = parser.extract_name(parser.text)
+    if extract_name:
+        print("Name: ", extract_name)
+    else:
+        print("Name not found.")
 
-def read_docx(file):
-    """Extracts text from a DOCX file."""
-    doc = docx.Document(file)
-    text = ""
-    for para in doc.paragraphs:
-        text += para.text + "\n"
-    return text
+    #Extract Contact Information
+    contact_info = parser.extract_contact_number_from_resume(parser.text)
+    if contact_info:
+        print("Contact Number: ", contact_info)
+    else:
+        print("Contact Number not found")
 
-
-def main():
-    """
-    Streamlit app to handle multiple resume parsing and display results in a table.
-    """
-
-    st.title("Resume Parser")
-    st.subheader("Upload multiple resumes (PDF, DOC, or text format)")
-
-    # Improved file upload handling and feedback
-    uploaded_files = st.file_uploader("Choose your resumes", type=["pdf", "docx", "txt"], accept_multiple_files=True)
-    if uploaded_files:
-        parsed_resumes = []
-        for uploaded_file in uploaded_files:
-            file_type = uploaded_file.type
-            if file_type == "application/pdf":
-                resume_text = read_pdf(uploaded_file)
-            elif file_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                resume_text = read_docx(uploaded_file)
-            elif file_type == "text/plain":
-                resume_text = uploaded_file.read().decode("utf-8")
-            else:
-                st.warning(f"Unsupported file type: {file_type}")
-                continue
-
-            parsed_data = parse_resume(resume_text)
-            if parsed_data:
-                parsed_resumes.append(parsed_data)
-            else:
-                st.warning(f"Failed to parse resume: {uploaded_file.name}")
-
-        if parsed_resumes:
-            df = pd.DataFrame(parsed_resumes)
-            st.dataframe(df)
-
-
-if __name__ == "__main__":
-    main()
+    #Extracting Email
+    email = parser.extract_email_from_resume(parser.text)
+    if email:
+        print("Email:", email)
+    else:
+        print("Email not found")
+    skills_list = ['Python', 'Data Analysis', 'Machine Learning', 'Communication', 'Project Management',
+                   'Deep Learning', 'SQL', 'Tableau']
+    extracted_skills = parser.extract_skills_from_resume(parser.text, skills_list)
+    if extracted_skills:
+        print("Skills:", extracted_skills)
+    else:
+        print("No skills found")
+    extracted_education = parser.extract_education_from_resume(parser.text)
+    if extracted_education:
+        print("Education:", extracted_education)
+    else:
+        print("No education information found")
+    print()
