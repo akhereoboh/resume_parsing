@@ -1,6 +1,5 @@
 import re
 import pdfminer
-
 from pdfminer.high_level import extract_text
 import spacy
 from spacy.matcher import Matcher
@@ -45,7 +44,7 @@ class ResumeParser:
 
     def extract_education_from_resume(self, text):
         education = []
-        pattern = r"(?i)(?:Bsc|\bB\.\w+|\bM\.\w+|\bPh\.D\.\w+|\bBachelor(?:'s)?|\bComputer(?:'s)?|\bPh\.D)\s(?:\w+\s)*\w+"
+        pattern = r"(?i)(?:Bsc|\bB\.\w+|\bM\.\w+|\bPh\.D\.\w+|\bBachelor(?:'s)?|\bComputer(?:'s)?|\bMasters(?:'s)?|\bUniversity(?:'s)?\bPh\.D)\s(?:\w+\s)*\w+"
         matches = re.findall(pattern, text)
         for match in matches:
             education.append(match.strip())
@@ -70,7 +69,7 @@ class ResumeParser:
 
 
 if __name__ == '__main__':
-    resume_paths = r"C:/Users/User/Desktop/newCV.pdf"
+    resume_paths = r"C:/Users/User/Desktop/CV_Cv.pdf"
     parser = ResumeParser(resume_paths)
     print("Resume: ", resume_paths)
 
@@ -95,7 +94,7 @@ if __name__ == '__main__':
     else:
         print("Email not found")
     skills_list = ['Python', 'Data Analysis', 'Machine Learning', 'Communication', 'Project Management',
-                   'Deep Learning', 'SQL', 'Tableau']
+                   'Deep Learning', 'SQL', 'Tableau', 'Microsoft',]
     extracted_skills = parser.extract_skills_from_resume(parser.text, skills_list)
     if extracted_skills:
         print("Skills:", extracted_skills)

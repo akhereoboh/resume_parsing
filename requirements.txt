@@ -4,3 +4,4 @@ PyMuPDF
 docx
 spacy
 re
+python-Levenshtein
